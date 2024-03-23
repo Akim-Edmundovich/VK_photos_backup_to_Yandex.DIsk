@@ -1,8 +1,9 @@
 import time
 import requests
-from datetime import datetime
+import datetime  # import datetime
 import yadisk
 import json
+from settings import VK_TOKEN, VK_ID, YANDEX_TOKEN
 
 
 class VKAPIClient:  # Создаю класс, который может взаимодействовать с данными пользователя из ВК
@@ -10,18 +11,31 @@ class VKAPIClient:  # Создаю класс, который может вза�
 
     API_BASE_URL = 'https://api.vk.com/method'  # Базовый URL
 
-    def __init__(self, token, user_id) -> None:  # Инициализация классас 2-я параметрами
+    def __init__(self, token, user_id) -> None:
         self.token = token
         self.user_id = user_id
         self.params = {
             'access_token': self.token,  # Token
             'v': '5.131'  # Версия VK
         }
+        self.file_info_list = []
 
     def _build_url(self, api_metod):  # Метод с 1 параметром, возвращающий базовый URL + параметр
         return f'{self.API_BASE_URL}/{api_metod}'
 
+    def check_token(self):
+        response = requests.get(self._build_url('users.get'),
+                                params=self.params).json()
+
+        if 'error' in response.keys():
+            return '---Incorrect VK token!---'
+            # print(response['response'][0]['id']) #'Incorrect token!'
+        elif response['response'][0]['id']:
+            print('VK token is correct!')
+            return True
+
     def get_profile_photo(self):  # Метод получает информацию о фото профиля пользователя
+
         self.params.update(
             {'owner_id': self.user_id,  # Дополняю словарь с общ. парам. ID пользователя и ID альбома с фото
              'album_id': 'profile',
@@ -29,13 +43,14 @@ class VKAPIClient:  # Создаю класс, который может вза�
              'extended': 1
              })
         response = requests.get(self._build_url('photos.get'),
-                                params=self.params).json()  # отправляю GET-запрос и присваиваю его в формате JSON к переменной
+                                params=self.params).json()
 
         return response  # Возвращаю данные из запроса
 
 
 class Yandex:
     count = 0  # счетик для остановки копирования фото
+    json_data = []
 
     def __init__(self, token):
         self.token = token
@@ -46,33 +61,43 @@ class Yandex:
             'Content-Type': 'application/json'
         }
 
+    # Проверка токена Яндекс
+    def check_token(self):
+        if self.y.check_token():
+            print('Yandex token is correct!')
+            return True
+        else:
+            print('---Incorrect Yandex token!---')
+            return False
+
+    # Создание папки в Я.Диске после проверки токена
     def create_folder(self):
-        '''Создание папки'''
+        '''Проверка токена Яндекс и создание папки'''
+        self.date_time = datetime.datetime.now()
+        self.prefix_folder_name = 'VK Photo Backup '
+        self.postfix_folder_name = self.date_time.strftime('%d-%m-%y-%H-%M-%S')
 
-        try:  # Если папки нет, то создает 'VK_photos_backup'
-            self.folder_name = 'VK_profile_photo'
+        if self.y.check_token():  # Если токен яндекс валидный:
+            self.folder_name = self.prefix_folder_name + self.postfix_folder_name
             self.y.mkdir(self.folder_name)
-        except:  # Иначе создает с другим именем
+        else:
+            print('!!! INVALID TOKEN !!!')
 
-            self.folder_name = 'VK_profile_photo(1)'
-            self.y.mkdir(self.folder_name)
-
-    def create_json(self):
-        self.json_data = []
-        with open('info.json', 'w') as file:
-            file.write(json.dumps(self.json_data))
-
+    # Загрузка на диск
     def upload_to_disk(self, count_photo=5):
         '''Загрузка на диск'''
         self.count_photo = count_photo
 
-        j = vk.get_profile_photo()  # Получение данных о фото в json-формате
-        path_photo = j['response']['items']  # Переходит к нужному месту в json
+        json_photo = vk.get_profile_photo()  # Получение данных о фото в json-формате
+        path_photo = json_photo['response']['items']  # Переходит к нужному месту в json
 
         print('Progress:')
 
+        with open('info.json') as f:
+            self.json_file = json.load(f)
+
         for i in path_photo:  # Вывод нужного URL и даты-времени в string
-            dt = datetime.fromtimestamp(i['date'])  # Перевод метки времени в читабельный формат даты_времени
+            dt = datetime.datetime.fromtimestamp(i['date'])  # Перевод метки времени в читабельный формат даты_времени
             str_date_time = dt.strftime("%d_%m_%Y_%H_%M_%S")  # Форматирование времени-даты для имени фото
 
             for s in i['sizes']:  # Проход циклом по спискам в ['sizes']
@@ -82,35 +107,50 @@ class Yandex:
                                           f'/{self.folder_name}/{str_date_time}')  # Загружает фото на диск и именует "дата_время"
                         self.count += 1  # Добавляет к счетчику +1
                         file_info = {'file_name': str_date_time, 'size': s['type']}  # Словарь с данными о фото
-                        with open('info.json', 'r') as f:  # Открывает файл json для чтения
+                        self.json_file.append(file_info)
 
-                            json_file = json.load(f)  # Присваивает переменной объект из json
-                            json_file.append(file_info)  # обавляет в список словарь с данными о фото
-                            with open('info.json', 'w', encoding='utf-8') as f:  # Открытие на запись
-                                json.dump(json_file, f)  # Добавление данных в json file
+                        print(f'Photo "{str_date_time}" was uploaded in "{self.folder_name}"', end='\n')
 
-                            print(f'Photo "{str_date_time}" was uploaded in "{self.folder_name}"', end='\n')
+        with open('info.json', 'w') as f:
+            json.dump(self.json_file, f)
 
         print('Success!')
 
 
-if __name__ == '__main__':  # Создаю конструктор для выполнения кода только в нем
+if __name__ == '__main__':
 
     print('Hello! Your backup APP is ready')
-    time.sleep(1)
+    time.sleep(0.5)
 
-    vk_token = input('Enter VK token:\n')
-    yandex_token = input('Enter Yandex token:\n')
-    vk_id = int(input('Enter VK ID:\n'))
-    photo_count = input('How many photos do you want to copy(default - 5)?\nPress "Enter" to skip:\n')
+    vk_token = VK_TOKEN
+    vk_id = VK_ID
+    vk = VKAPIClient(vk_token, vk_id)
 
-    vk = VKAPIClient(vk_token, vk_id)  # Экземпляр  VKAPIClient с параметрами TOKEN и ID пользователя
-    yandex = Yandex(yandex_token)  # Экземпляр Yandex с параметром токена
+    yandex_token = YANDEX_TOKEN
+    yandex = Yandex(yandex_token)
 
-    yandex.create_json()
-    yandex.create_folder()
+    print('Checking VK token...')
+    time.sleep(0.5)
+    if vk.check_token() == True:
+        vk.get_profile_photo()
+        time.sleep(0.5)
+        print('Checking Yandex token...')
+        time.sleep(0.5)
 
-    if photo_count:
-        yandex.upload_to_disk(int(photo_count))
+        if yandex.check_token() == True:
+            time.sleep(0.5)
+            photo_count = input('How many photos do you want to copy(default 5)?\nPress "Enter" to skip:\n')
+            yandex.create_folder()
+
+            if photo_count:
+                yandex.upload_to_disk(int(photo_count))
+            else:
+                yandex.upload_to_disk()
+
+
+        else:
+            time.sleep(0.5)
+            print('Try again.')
     else:
-        yandex.upload_to_disk()
+        time.sleep(0.5)
+        print('Try again.')
