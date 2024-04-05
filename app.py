@@ -1,6 +1,6 @@
 import time
 import requests
-import datetime  # import datetime
+import datetime
 import yadisk
 import json
 from settings import VK_TOKEN, VK_ID, YANDEX_TOKEN
@@ -18,10 +18,9 @@ class VKAPIClient:  # Создаю класс, который может вза�
             'access_token': self.token,  # Token
             'v': '5.131'  # Версия VK
         }
-        self.file_info_list = []
 
-    def _build_url(self, api_metod):  # Метод с 1 параметром, возвращающий базовый URL + параметр
-        return f'{self.API_BASE_URL}/{api_metod}'
+    def _build_url(self, api_method):  # Метод с 1 параметром, возвращающий базовый URL + параметр
+        return f'{self.API_BASE_URL}/{api_method}'
 
     def check_token(self):
         response = requests.get(self._build_url('users.get'),
@@ -48,9 +47,13 @@ class VKAPIClient:  # Создаю класс, который может вза�
         return response  # Возвращаю данные из запроса
 
 
+vk = VKAPIClient(VK_TOKEN, VK_ID)
+print(vk.check_token())
+print(vk.get_profile_photo())
+
+
 class Yandex:
     count = 0  # счетик для остановки копирования фото
-    json_data = []
 
     def __init__(self, token):
         self.token = token
@@ -63,6 +66,7 @@ class Yandex:
 
     # Проверка токена Яндекс
     def check_token(self):
+        """Объединить с create_folder() """
         if self.y.check_token():
             print('Yandex token is correct!')
             return True
